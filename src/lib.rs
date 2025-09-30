@@ -580,6 +580,35 @@ mod tests {
         assert!(!can_cast(&mut [&value, &value]));
     }
 
+    macro_rules! test_cast_inner {
+        (@mut $value:expr, $T:ty, $U:ty) => {{
+            let mut value_src = $value.clone();
+            let result = cast!($value, $U);
+            assert_eq!(result.is_ok(), can_cast!($T, $U));
+            assert_eq!(result.is_ok(), get_cast_fns!($T, $U).is_some());
+            if let Some((from, to)) = get_cast_fns!($T, $U) {
+                let value_t = from(result.unwrap()); // U -> T
+                assert_eq!(value_t, &mut value_src);
+                Ok(to(value_t)) // T -> U
+            } else {
+                result
+            }
+        }};
+        ($value:expr, $T:ty, $U:ty) => {{
+            let value_src: $T = $value.clone();
+            let result = cast!($value, $U);
+            assert_eq!(result.is_ok(), can_cast!($T, $U));
+            assert_eq!(result.is_ok(), get_cast_fns!($T, $U).is_some());
+            if let Some((from, to)) = get_cast_fns!($T, $U) {
+                let value_in: $T = value_src.clone();
+                let value_u = to(value_in); // T -> U
+                let value_t = from(value_u); // U -> T
+                assert_eq!(value_t, value_src);
+            }
+            result
+        }};
+    }
+
     macro_rules! test_lifetime_free_cast {
         () => {};
 
@@ -597,8 +626,8 @@ mod tests {
                 #[test]
                 #[allow(non_snake_case)]
                 fn [<cast_lifetime_free_ $name>]() {
-                    fn do_cast<T>(value: T) -> Result<$TARGET, T> {
-                        cast!(value, $TARGET)
+                    fn do_cast<T: Clone + PartialEq + std::fmt::Debug>(value: T) -> Result<$TARGET, T> {
+                        test_cast_inner!(value, T, $TARGET)
                     }
 
                     $(
@@ -613,8 +642,8 @@ mod tests {
                 #[test]
                 #[allow(non_snake_case)]
                 fn [<cast_lifetime_free_ref_ $name>]() {
-                    fn do_cast<T>(value: &T) -> Result<&$TARGET, &T> {
-                        cast!(value, &$TARGET)
+                    fn do_cast<'a, T: PartialEq + std::fmt::Debug>(value: &'a T) -> Result<&'a $TARGET, &'a T> {
+                        test_cast_inner!(value, &'a T, &'a $TARGET)
                     }
 
                     $(
@@ -629,8 +658,8 @@ mod tests {
                 #[test]
                 #[allow(non_snake_case)]
                 fn [<cast_lifetime_free_mut_ $name>]() {
-                    fn do_cast<T>(value: &mut T) -> Result<&mut $TARGET, &mut T> {
-                        cast!(value, &mut $TARGET)
+                    fn do_cast<'a, T: Clone + PartialEq + std::fmt::Debug>(value: &'a mut T) -> Result<&'a mut $TARGET, &'a mut T> {
+                        test_cast_inner!(@mut value, &'a mut T, &'a mut $TARGET)
                     }
 
                     $(
@@ -661,11 +690,8 @@ mod tests {
                 #[test]
                 #[allow(non_snake_case)]
                 fn [<cast_lifetime_free_ $TARGET>]() {
-                    fn do_cast<T>(value: T) -> Result<$TARGET, T> {
-                        let result = cast!(value, $TARGET);
-                        assert_eq!(result.is_ok(), can_cast!(T, $TARGET));
-                        assert_eq!(result.is_ok(), get_cast_fns!(T, $TARGET).is_some());
-                        result
+                    fn do_cast<T: Clone + PartialEq + std::fmt::Debug>(value: T) -> Result<$TARGET, T> {
+                        test_cast_inner!(value, T, $TARGET)
                     }
 
                     $(
@@ -680,11 +706,8 @@ mod tests {
                 #[test]
                 #[allow(non_snake_case)]
                 fn [<cast_lifetime_free_ref_ $TARGET>]() {
-                    fn do_cast<T>(value: &T) -> Result<&$TARGET, &T> {
-                        let result = cast!(value, &$TARGET);
-                        assert_eq!(result.is_ok(), can_cast!(T, $TARGET));
-                        assert_eq!(result.is_ok(), get_cast_fns!(T, $TARGET).is_some());
-                        result
+                    fn do_cast<'a, T: PartialEq + std::fmt::Debug>(value: &'a T) -> Result<&'a $TARGET, &'a T> {
+                        test_cast_inner!(value, &'a T, &'a $TARGET)
                     }
 
                     $(
@@ -699,11 +722,8 @@ mod tests {
                 #[test]
                 #[allow(non_snake_case)]
                 fn [<cast_lifetime_free_mut_ $TARGET>]() {
-                    fn do_cast<T>(value: &mut T) -> Result<&mut $TARGET, &mut T> {
-                        let result = cast!(value, &mut $TARGET);
-                        assert_eq!(result.is_ok(), can_cast!(T, $TARGET));
-                        assert_eq!(result.is_ok(), get_cast_fns!(T, $TARGET).is_some());
-                        result
+                    fn do_cast<'a, T: Clone + PartialEq + std::fmt::Debug>(value: &'a mut T) -> Result<&'a mut $TARGET, &'a mut T> {
+                        test_cast_inner!(@mut value, &'a mut T, &'a mut $TARGET)
                     }
 
                     $(
