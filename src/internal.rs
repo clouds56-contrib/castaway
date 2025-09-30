@@ -46,6 +46,11 @@ pub trait TryCastMutLifetimeFree<'a, T: ?Sized, U: LifetimeFree + ?Sized> {
             Err(value)
         }
     }
+
+    #[inline(always)]
+    fn can_cast(&self) -> bool {
+        type_eq_non_static::<T, U>()
+    }
 }
 
 impl<'a, T: ?Sized, U: LifetimeFree + ?Sized> TryCastMutLifetimeFree<'a, T, U>
@@ -69,6 +74,11 @@ pub trait TryCastRefLifetimeFree<'a, T: ?Sized, U: LifetimeFree + ?Sized> {
         } else {
             Err(value)
         }
+    }
+
+    #[inline(always)]
+    fn can_cast(&self) -> bool {
+        type_eq_non_static::<T, U>()
     }
 }
 
@@ -96,6 +106,11 @@ pub trait TryCastOwnedLifetimeFree<T, U: LifetimeFree> {
             Err(value)
         }
     }
+
+    #[inline(always)]
+    fn can_cast(&self) -> bool {
+        type_eq_non_static::<T, U>()
+    }
 }
 
 impl<T, U: LifetimeFree> TryCastOwnedLifetimeFree<T, U> for &&&&&(CastToken<T>, CastToken<U>) {}
@@ -114,6 +129,11 @@ pub trait TryCastSliceMut<'a, T: 'static, U: 'static> {
         } else {
             Err(value)
         }
+    }
+
+    #[inline(always)]
+    fn can_cast(&self) -> bool {
+        type_eq::<T, U>()
     }
 }
 
@@ -135,6 +155,11 @@ pub trait TryCastSliceRef<'a, T: 'static, U: 'static> {
         } else {
             Err(value)
         }
+    }
+
+    #[inline(always)]
+    fn can_cast(&self) -> bool {
+        type_eq::<T, U>()
     }
 }
 
@@ -158,6 +183,11 @@ pub trait TryCastMut<'a, T: 'static, U: 'static> {
             Err(value)
         }
     }
+
+    #[inline(always)]
+    fn can_cast(&self) -> bool {
+        type_eq::<T, U>()
+    }
 }
 
 impl<'a, T: 'static, U: 'static> TryCastMut<'a, T, U>
@@ -180,6 +210,11 @@ pub trait TryCastRef<'a, T: 'static, U: 'static> {
             Err(value)
         }
     }
+
+    #[inline(always)]
+    fn can_cast(&self) -> bool {
+        type_eq::<T, U>()
+    }
 }
 
 impl<'a, T: 'static, U: 'static> TryCastRef<'a, T, U> for &(CastToken<&'a T>, CastToken<&'a U>) {}
@@ -195,6 +230,107 @@ pub trait TryCastOwned<T: 'static, U: 'static> {
             Err(value)
         }
     }
+
+    #[inline(always)]
+    fn can_cast(&self) -> bool {
+        type_eq::<T, U>()
+    }
 }
 
 impl<T: 'static, U: 'static> TryCastOwned<T, U> for (CastToken<T>, CastToken<U>) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_try_cast() {
+        // TryCastOwned
+        fn try_cast_owned<T: Copy + 'static>(value: T, success: bool) {
+            let token = (CastToken::<T>::of(), CastToken::<i32>::of());
+            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&&&&&&token).can_cast(), success);
+            assert_eq!(token.try_cast(value).is_ok(), success);
+            assert_eq!(token.can_cast(), success);
+        }
+        try_cast_owned(42i32, true);
+        try_cast_owned(42u32, false);
+
+        // TryCastRef
+        fn try_cast_ref<T: 'static>(value: &T, success: bool) {
+            let token = (CastToken::<&T>::of(), CastToken::<&i32>::of());
+            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&&&&&&token).can_cast(), success);
+            assert_eq!((&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&token).can_cast(), success);
+        }
+        try_cast_ref(&42i32, true);
+        try_cast_ref(&42u32, false);
+
+        // TryCastMut
+        fn try_cast_mut<T: 'static>(value: &mut T, success: bool) {
+            let token = (CastToken::<&mut T>::of(), CastToken::<&mut i32>::of());
+            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&&&&&&token).can_cast(), success);
+            assert_eq!((&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&token).can_cast(), success);
+        }
+        try_cast_mut(&mut 42i32, true);
+        try_cast_mut(&mut 42u32, false);
+
+        // TryCastSliceRef
+        fn try_cast_slice_ref<T: 'static>(value: &[T], success: bool) {
+            let token = (CastToken::<&[T]>::of(), CastToken::<&[i32]>::of());
+            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&&&&&&token).can_cast(), success);
+            assert_eq!((&&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&&token).can_cast(), success);
+        }
+        try_cast_slice_ref(&[42i32], true);
+        try_cast_slice_ref(&[42u32], false);
+
+        // TryCastSliceMut
+        fn try_cast_slice_mut<T: 'static>(value: &mut [T], success: bool) {
+            let token = (CastToken::<&mut [T]>::of(), CastToken::<&mut [i32]>::of());
+            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&&&&&&token).can_cast(), success);
+            assert_eq!((&&&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&&&token).can_cast(), success);
+        }
+        try_cast_slice_mut(&mut [42i32], true);
+        try_cast_slice_mut(&mut [42u32], false);
+
+        // TryCastOwnedLifetimeFree
+        fn try_cast_owned_lifetime_free<T: Copy + LifetimeFree>(value: T, success: bool) {
+            let token = (CastToken::<T>::of(), CastToken::<i32>::of());
+            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&&&&&&token).can_cast(), success);
+            assert_eq!((&&&&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&&&&token).can_cast(), success);
+        }
+        try_cast_owned_lifetime_free(42i32, true);
+        try_cast_owned_lifetime_free(42u32, false);
+
+        // TryCastRefLifetimeFree
+        fn try_cast_ref_lifetime_free<T: LifetimeFree>(value: &T, success: bool) {
+            let token = (CastToken::<&T>::of(), CastToken::<&i32>::of());
+            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&&&&&&token).can_cast(), success);
+            assert_eq!((&&&&&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&&&&&token).can_cast(), success);
+        }
+        try_cast_ref_lifetime_free(&42i32, true);
+        try_cast_ref_lifetime_free(&42u32, false);
+
+        // TryCastMutLifetimeFree
+        fn try_cast_mut_lifetime_free<T: LifetimeFree>(value: &mut T, success: bool) {
+            let token = (CastToken::<&mut T>::of(), CastToken::<&mut i32>::of());
+            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&&&&&&token).can_cast(), success);
+            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
+            assert_eq!((&&&&&&&token).can_cast(), success);
+        }
+        try_cast_mut_lifetime_free(&mut 42i32, true);
+        try_cast_mut_lifetime_free(&mut 42u32, false);
+    }
+}
