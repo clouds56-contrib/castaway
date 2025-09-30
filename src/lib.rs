@@ -450,40 +450,59 @@ macro_rules! match_type {
 /// more candidate destination types, executing the first matching branch.
 ///
 /// This macro is the type-level analogue to [`match_type!`], but instead of
-/// matching on the runtime value of an expression it matches only on the
-/// *static type* `From` that you provide as the first argument. Each arm lists
-/// one or more concrete destination types separated by `|`. If any of those
-/// types can be (symmetrically) cast to/from `From` (i.e. they are considered
-/// identical under the rules of this crate), the associated branch expression
-/// is evaluated and returned as the overall result of the macro invocation.
+/// matching on the runtime value of an expression it examines only the *static
+/// type* `From` (the first argument). Each arm lists one or more concrete
+/// destination types separated by `|`. If any of those destination types can
+/// be (symmetrically) cast to/from `From` (i.e. they are identical under this
+/// crate's rules), the corresponding branch expression is evaluated and its
+/// value becomes the macro's result.
 ///
-/// Internally this uses [`get_cast_fns!`] to test feasibility. Branches that
-/// are not taken compile away entirely; there is no runtime branching once
-/// monomorphized. Like the other casting macros, no data conversion is
-/// performed—only identity casts for concretely equal types (respecting
-/// lifetime / lifetime‑free rules) are considered matches.
+/// Internally this uses [`can_cast!`] (fast path) and/or [`get_cast_fns!`]
+/// (when you request the function pointers) to test feasibility. Untaken
+/// branches compile away completely; there is no runtime overhead after
+/// monomorphization. No data transformation occurs: only identity casts for
+/// concretely equal types (respecting lifetime / lifetime‑free constraints)
+/// are considered matches.
 ///
-/// A final default arm is required (unless you intentionally invoke with an
-/// empty set, which expands to `()`), because you cannot exhaustively list all
-/// possible types. The default arm does not have to be `_`; any irrefutable
-/// pattern is accepted. Since no value is supplied, that pattern is typically
-/// just `_`.
+/// # Syntax
+/// Basic form (boolean style matching on type only):
+/// ```text
+/// match_ty!(From, {
+///     Type1 => expr1,
+///     Type2 | Type3 => expr2,
+///     _ => default_expr,
+/// })
+/// ```
+/// A leading `|` before the first type in an arm (`| Type1 | Type2 => ...`) is
+/// also accepted for stylistic consistency with normal Rust pattern groups.
 ///
-/// Differences from [`match_type!`]:
-/// - `match_ty!` operates purely on types; it never evaluates or binds a
-///   value.
-/// - Branch arms cannot directly bind a value of the matched type (there is
-///   none); they just produce an expression result.
-/// - It returns the branch expression directly; there is no intermediate cast
-///   `Result`.
+/// Function‑capturing form (obtain zero‑cost cast function pointers):
+/// ```text
+/// match_ty!(From, (from_fn, to_fn), {
+///     TargetType => expr_using_from_fn_and_to_fn,
+///     _ => fallback,
+/// })
+/// ```
+/// In a matching arm, `from_fn` has type `fn(TargetType) -> From` and `to_fn`
+/// has type `fn(From) -> TargetType`. In non‑matching arms those names are not
+/// bound (the code for that arm is never executed anyway). You may ignore one
+/// of them with `_`.
 ///
-/// If you need the actual *cast functions* inside the matched branch, simply
-/// call `get_cast_fns!(From, ThatType).unwrap()` again inside that branch; the
-/// compiler will constant-propagate the unwrap because the macro already
-/// proved the types match.
+/// An entirely empty arm set is permitted: `match_ty!(T, {})` expands to `()`.
+/// A final default arm (`_ => ...`) is otherwise required because you cannot
+/// enumerate all possible types.
+///
+/// # Differences from [`match_type!`]
+/// - Operates only on types; no value is evaluated or bound.
+/// - Branch expressions cannot pattern‑match on a value of the matched type.
+/// - Directly returns the branch expression (no intermediate `Result`).
+///
+/// # Captured function pointer ordering
+/// The tuple captured internally (and exposed via your `(from_fn, to_fn)`
+/// pattern) is `(fn(Target) -> From, fn(From) -> Target)`. Naming them `from`
+/// and `to` is a common convention used in the examples below.
 ///
 /// # Examples
-///
 /// Basic categorization:
 /// ```
 /// use castaway::match_ty;
@@ -500,30 +519,27 @@ macro_rules! match_type {
 /// assert_eq!(classify::<u32>(), "other");
 /// ```
 ///
-/// Using it to specialize a generic implementation:
+/// Specializing while capturing cast functions (note `_` ignores the second):
 /// ```
 /// use castaway::match_ty;
-/// fn zero_value<T: 'static>() -> T where T: Default {
+/// fn default_value<T: 'static + Default>() -> T {
 ///     match_ty!(T, (from, _), {
-///         u8 => from(0u8),
-///         i32 => from(0i32),
-///         // Fall back to `Default` for any other type.
+///         u8 => from(1u8),
+///         i32 => from(2i32),
 ///         _ => T::default(),
 ///     })
 /// }
-/// assert_eq!(zero_value::<u8>(), 0);
-/// assert_eq!(zero_value::<i32>(), 0);
-/// assert_eq!(zero_value::<u16>(), 0); // from Default
+/// assert_eq!(default_value::<u8>(), 1);
+/// assert_eq!(default_value::<i32>(), 2);
+/// assert_eq!(default_value::<u16>(), 0); // via Default
 /// ```
 ///
-/// Accessing cast function pointers inside a matched branch:
+/// Accessing both conversion directions directly:
 /// ```
 /// use castaway::match_ty;
 /// fn maybe_round_trip<T: 'static + Copy>() -> Option<(fn(u32)->T, fn(T)->u32)> {
 ///     match_ty!(T, (from, to), {
-///         u32 => {
-///             Some((from, to))
-///         },
+///         u32 => Some((from, to)),
 ///         _ => None,
 ///     })
 /// }
@@ -536,19 +552,6 @@ macro_rules! match_type {
 /// use castaway::match_ty;
 /// const _: () = match_ty!(u8, {}); // Expands to ()
 /// ```
-///
-/// # Pitfalls
-/// - Remember to include a default arm, otherwise you may accidentally rely
-///   on the empty-form which just returns `()`.
-/// - Grouping with `|` shares a single branch expression for all types in the
-///   group; if you need different logic per type, use separate arms.
-/// - Lifetimes and lifetime‑free rules apply just as with [`cast!`]; if a cast
-///   would be rejected there, the arm will not match here.
-///
-/// # When to use
-/// - You need a concise, readable way to pick between a small set of known
-///   concrete types in a generic context.
-/// - You want zero‑cost pseudo‑specialization without nightly features.
 macro_rules! match_ty {
     ($from:ty, $(($from_fn:pat, $to_fn:pat),)? {
         _ => $branch:expr $(,)?
@@ -900,6 +903,20 @@ mod tests {
     fn test_match_ty() {
         let a = match_ty!(u8, {
             u8 => 1,
+            _ => 2,
+        });
+        assert_eq!(a, 1);
+
+        let a = match_ty!(u16, (from, _), {
+            u8 => from(1),
+            u16 => from(2),
+            _ => 3,
+        });
+        assert_eq!(a, 2);
+
+
+        let a = match_ty!(u16, (from, _), {
+            u8 | u16 => from(1),
             _ => 2,
         });
         assert_eq!(a, 1);
