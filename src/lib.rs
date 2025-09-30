@@ -336,7 +336,7 @@ macro_rules! can_cast {
 /// With a helper abstraction:
 /// ```
 /// use castaway::get_cast_fns;
-/// fn transform_if_same<T: 'static, U: 'static>(value: T, f: impl FnOnce(U) -> U) -> T {
+/// fn transform_if_same<T: 'static, U: 'static, F: FnOnce(U) -> U>(value: T, f: F) -> T {
 ///     if let Some((from_u, to_u)) = get_cast_fns!(T, U) {
 ///         // Safe: we know T == U for casting purposes.
 ///         let u_val = to_u(value); // T -> U
@@ -345,8 +345,8 @@ macro_rules! can_cast {
 ///         value
 ///     }
 /// }
-/// assert_eq!(transform_if_same::<u8, u8>(5, |x| x + 1), 6);
-/// assert_eq!(transform_if_same::<u8, u16>(5, |x| x + 1), 5);
+/// assert_eq!(transform_if_same::<u8, u8, _>(5, |x| x + 1), 6);
+/// assert_eq!(transform_if_same::<u8, u16, _>(5, |x| x + 1), 5);
 /// ```
 #[macro_export]
 macro_rules! get_cast_fns {
