@@ -66,7 +66,11 @@ pub trait TryCastMutLifetimeFree<'a, T: ?Sized, U: LifetimeFree + ?Sized> {
 
     #[inline(always)]
     fn cast_method(&self) -> Option<CastMethod> {
-        self.can_cast().then_some(CastMethod::MutLifetimeFree)
+        if self.can_cast() {
+            Some(CastMethod::MutLifetimeFree)
+        } else {
+            None
+        }
     }
 }
 
@@ -100,7 +104,11 @@ pub trait TryCastRefLifetimeFree<'a, T: ?Sized, U: LifetimeFree + ?Sized> {
 
     #[inline(always)]
     fn cast_method(&self) -> Option<CastMethod> {
-        self.can_cast().then_some(CastMethod::RefLifetimeFree)
+        if self.can_cast() {
+            Some(CastMethod::RefLifetimeFree)
+        } else {
+            None
+        }
     }
 }
 
@@ -136,7 +144,11 @@ pub trait TryCastOwnedLifetimeFree<T, U: LifetimeFree> {
 
     #[inline(always)]
     fn cast_method(&self) -> Option<CastMethod> {
-        self.can_cast().then_some(CastMethod::OwnedLifetimeFree)
+        if self.can_cast() {
+            Some(CastMethod::OwnedLifetimeFree)
+        } else {
+            None
+        }
     }
 }
 
@@ -165,7 +177,11 @@ pub trait TryCastSliceMut<'a, T: 'static, U: 'static> {
 
     #[inline(always)]
     fn cast_method(&self) -> Option<CastMethod> {
-        self.can_cast().then_some(CastMethod::SliceMut)
+        if self.can_cast() {
+            Some(CastMethod::SliceMut)
+        } else {
+            None
+        }
     }
 }
 
@@ -196,7 +212,11 @@ pub trait TryCastSliceRef<'a, T: 'static, U: 'static> {
 
     #[inline(always)]
     fn cast_method(&self) -> Option<CastMethod> {
-        self.can_cast().then_some(CastMethod::SliceRef)
+        if self.can_cast() {
+            Some(CastMethod::SliceRef)
+        } else {
+            None
+        }
     }
 }
 
@@ -228,7 +248,11 @@ pub trait TryCastMut<'a, T: 'static, U: 'static> {
 
     #[inline(always)]
     fn cast_method(&self) -> Option<CastMethod> {
-        self.can_cast().then_some(CastMethod::Mut)
+        if self.can_cast() {
+            Some(CastMethod::Mut)
+        } else {
+            None
+        }
     }
 }
 
@@ -260,7 +284,11 @@ pub trait TryCastRef<'a, T: 'static, U: 'static> {
 
     #[inline(always)]
     fn cast_method(&self) -> Option<CastMethod> {
-        self.can_cast().then_some(CastMethod::Ref)
+        if self.can_cast() {
+            Some(CastMethod::Ref)
+        } else {
+            None
+        }
     }
 }
 
@@ -285,7 +313,11 @@ pub trait TryCastOwned<T: 'static, U: 'static> {
 
     #[inline(always)]
     fn cast_method(&self) -> Option<CastMethod> {
-        self.can_cast().then_some(CastMethod::Owned)
+        if self.can_cast() {
+            Some(CastMethod::Owned)
+        } else {
+            None
+        }
     }
 }
 
