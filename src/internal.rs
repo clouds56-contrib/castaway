@@ -327,15 +327,29 @@ impl<T: 'static, U: 'static> TryCastOwned<T, U> for (CastToken<T>, CastToken<U>)
 mod tests {
     use super::*;
 
+    macro_rules! dispatch {
+        ($value:expr) => {
+            (&&&&&&&$value)
+        };
+    }
+
+    fn then_some<T>(b: bool, v: T) -> Option<T> {
+        if b {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
     #[test]
     fn test_try_cast() {
         // TryCastOwned
         fn try_cast_owned<T: Copy + 'static, U: 'static>(value: T, success: bool) {
             let token = (CastToken::<T>::of(), CastToken::<U>::of());
-            let method = success.then_some(CastMethod::Owned);
-            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
-            assert_eq!((&&&&&&&token).can_cast(), success);
-            assert_eq!((&&&&&&&token).cast_method(), method);
+            let method = then_some(success, CastMethod::Owned);
+            assert_eq!(dispatch!(token).try_cast(value).is_ok(), success);
+            assert_eq!(dispatch!(token).can_cast(), success);
+            assert_eq!(dispatch!(token).cast_method(), method);
             assert_eq!(token.try_cast(value).is_ok(), success);
             assert_eq!(token.can_cast(), success);
             assert_eq!(token.cast_method(), method);
@@ -346,10 +360,11 @@ mod tests {
         // TryCastRef
         fn try_cast_ref<T: 'static, U: 'static>(value: &T, success: bool) {
             let token = (CastToken::<&T>::of(), CastToken::<&U>::of());
-            let method = success.then_some(CastMethod::Ref);
-            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
-            assert_eq!((&&&&&&&token).can_cast(), success);
-            assert_eq!((&&&&&&&token).cast_method(), method);
+            let method = then_some(success, CastMethod::Ref);
+            assert_eq!(dispatch!(token).try_cast(value).is_ok(), success);
+            assert_eq!(dispatch!(token).can_cast(), success);
+            assert_eq!(dispatch!(token).cast_method(), method);
+            // I don't know why the double reference is needed here, but it is.
             assert_eq!((&&token).try_cast(value).is_ok(), success);
             assert_eq!((&&token).can_cast(), success);
             assert_eq!((&&token).cast_method(), method);
@@ -360,10 +375,10 @@ mod tests {
         // TryCastMut
         fn try_cast_mut<T: 'static, U: 'static>(value: &mut T, success: bool) {
             let token = (CastToken::<&mut T>::of(), CastToken::<&mut U>::of());
-            let method = success.then_some(CastMethod::Mut);
-            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
-            assert_eq!((&&&&&&&token).can_cast(), success);
-            assert_eq!((&&&&&&&token).cast_method(), method);
+            let method = then_some(success, CastMethod::Mut);
+            assert_eq!(dispatch!(token).try_cast(value).is_ok(), success);
+            assert_eq!(dispatch!(token).can_cast(), success);
+            assert_eq!(dispatch!(token).cast_method(), method);
             assert_eq!((&&token).try_cast(value).is_ok(), success);
             assert_eq!((&&token).can_cast(), success);
             assert_eq!((&&token).cast_method(), method);
@@ -374,10 +389,10 @@ mod tests {
         // TryCastSliceRef
         fn try_cast_slice_ref<T: 'static, U: 'static>(value: &[T], success: bool) {
             let token = (CastToken::<&[T]>::of(), CastToken::<&[U]>::of());
-            let method = success.then_some(CastMethod::SliceRef);
-            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
-            assert_eq!((&&&&&&&token).can_cast(), success);
-            assert_eq!((&&&&&&&token).cast_method(), method);
+            let method = then_some(success, CastMethod::SliceRef);
+            assert_eq!(dispatch!(token).try_cast(value).is_ok(), success);
+            assert_eq!(dispatch!(token).can_cast(), success);
+            assert_eq!(dispatch!(token).cast_method(), method);
             assert_eq!((&&&token).try_cast(value).is_ok(), success);
             assert_eq!((&&&token).can_cast(), success);
             assert_eq!((&&&token).cast_method(), method);
@@ -388,10 +403,10 @@ mod tests {
         // TryCastSliceMut
         fn try_cast_slice_mut<T: 'static, U: 'static>(value: &mut [T], success: bool) {
             let token = (CastToken::<&mut [T]>::of(), CastToken::<&mut [U]>::of());
-            let method = success.then_some(CastMethod::SliceMut);
-            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
-            assert_eq!((&&&&&&&token).can_cast(), success);
-            assert_eq!((&&&&&&&token).cast_method(), method);
+            let method = then_some(success, CastMethod::SliceMut);
+            assert_eq!(dispatch!(token).try_cast(value).is_ok(), success);
+            assert_eq!(dispatch!(token).can_cast(), success);
+            assert_eq!(dispatch!(token).cast_method(), method);
             assert_eq!((&&&&token).try_cast(value).is_ok(), success);
             assert_eq!((&&&&token).can_cast(), success);
             assert_eq!((&&&&token).cast_method(), method);
@@ -402,10 +417,10 @@ mod tests {
         // TryCastOwnedLifetimeFree
         fn try_cast_owned_lifetime_free<T: Copy + LifetimeFree, U: LifetimeFree>(value: T, success: bool) {
             let token = (CastToken::<T>::of(), CastToken::<U>::of());
-            let method = success.then_some(CastMethod::OwnedLifetimeFree);
-            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
-            assert_eq!((&&&&&&&token).can_cast(), success);
-            assert_eq!((&&&&&&&token).cast_method(), method);
+            let method = then_some(success, CastMethod::OwnedLifetimeFree);
+            assert_eq!(dispatch!(token).try_cast(value).is_ok(), success);
+            assert_eq!(dispatch!(token).can_cast(), success);
+            assert_eq!(dispatch!(token).cast_method(), method);
             assert_eq!((&&&&&token).try_cast(value).is_ok(), success);
             assert_eq!((&&&&&token).can_cast(), success);
             assert_eq!((&&&&&token).cast_method(), method);
@@ -416,10 +431,10 @@ mod tests {
         // TryCastRefLifetimeFree
         fn try_cast_ref_lifetime_free<T: LifetimeFree, U: LifetimeFree>(value: &T, success: bool) {
             let token = (CastToken::<&T>::of(), CastToken::<&U>::of());
-            let method = success.then_some(CastMethod::RefLifetimeFree);
-            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
-            assert_eq!((&&&&&&&token).can_cast(), success);
-            assert_eq!((&&&&&&&token).cast_method(), method);
+            let method = then_some(success, CastMethod::RefLifetimeFree);
+            assert_eq!(dispatch!(token).try_cast(value).is_ok(), success);
+            assert_eq!(dispatch!(token).can_cast(), success);
+            assert_eq!(dispatch!(token).cast_method(), method);
             assert_eq!((&&&&&&token).try_cast(value).is_ok(), success);
             assert_eq!((&&&&&&token).can_cast(), success);
             assert_eq!((&&&&&&token).cast_method(), method);
@@ -430,10 +445,10 @@ mod tests {
         // TryCastMutLifetimeFree
         fn try_cast_mut_lifetime_free<T: LifetimeFree, U: LifetimeFree>(value: &mut T, success: bool) {
             let token = (CastToken::<&mut T>::of(), CastToken::<&mut U>::of());
-            let method = success.then_some(CastMethod::MutLifetimeFree);
-            assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
-            assert_eq!((&&&&&&&token).can_cast(), success);
-            assert_eq!((&&&&&&&token).cast_method(), method);
+            let method = then_some(success, CastMethod::MutLifetimeFree);
+            assert_eq!(dispatch!(token).try_cast(value).is_ok(), success);
+            assert_eq!(dispatch!(token).can_cast(), success);
+            assert_eq!(dispatch!(token).cast_method(), method);
             assert_eq!((&&&&&&&token).try_cast(value).is_ok(), success);
             assert_eq!((&&&&&&&token).can_cast(), success);
             assert_eq!((&&&&&&&token).cast_method(), method);
