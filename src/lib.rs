@@ -206,6 +206,74 @@ macro_rules! cast {
     };
 }
 
+/// Check if a value can be cast to a given concrete type.
+/// The value would equal to `cast!(value, Type).is_ok()`.
+///
+/// The macro is useful when a value is not `Copy` or heavy to create,
+/// and you want to avoid moving it.
+///
+/// # Examples
+///
+/// ```
+/// # use castaway::can_cast;
+///
+/// assert!(!can_cast!(u8, u16));
+/// assert!(can_cast!(u8, u8));
+/// ```
+#[macro_export]
+macro_rules! can_cast {
+    ($T:ty, $U:ty) => {{
+        #[allow(unused_imports)]
+        use $crate::internal::*;
+
+        // Here we are using an _autoderef specialization_ technique, see notes in [`cast!`]
+        let src_token = CastToken::<$T>::of();
+        let dest_token = CastToken::<$U>::of();
+
+        // Note: The number of references added here must be kept in sync with
+        // the largest number of references used by any trait implementation in
+        // the internal module.
+        let result: bool = (&&&&&&&(src_token, dest_token)).can_cast();
+
+        result
+    }};
+}
+
+/// Check if a value can be cast to a given concrete type.
+/// The value would equal to `cast!(value, Type).is_ok()`.
+///
+/// The macro is useful when a value is not `Copy` or heavy to create,
+/// and you want to avoid moving it.
+///
+/// # Examples
+///
+/// ```
+/// # use castaway::get_cast_fns;
+///
+/// assert!(get_cast_fns!(u8, u16).is_none());
+/// let (from, to) = get_cast_fns!(u8, u8).unwrap();
+/// assert_eq!(from(42u8), 42u8);
+/// assert_eq!(to(42u8), 42u8);
+/// ```
+#[macro_export]
+macro_rules! get_cast_fns {
+    ($T:ty, $U:ty) => {{
+        #[allow(unused_imports)]
+        use $crate::internal::*;
+
+        // Here we are using an _autoderef specialization_ technique, see notes in [`cast!`]
+        let src_token = CastToken::<$T>::of();
+        let dest_token = CastToken::<$U>::of();
+
+        // Note: The number of references added here must be kept in sync with
+        // the largest number of references used by any trait implementation in
+        // the internal module.
+        let result: Option<(fn($U) -> $T, fn($T) -> $U)> = (&&&&&&&(src_token, dest_token)).get_cast_fns();
+
+        result
+    }};
+}
+
 /// Match the result of an expression against multiple concrete types.
 ///
 /// You can write multiple match arms in the following syntax:
@@ -282,6 +350,42 @@ macro_rules! match_type {
         let $pat = $value;
         $branch
     }};
+}
+
+#[macro_export]
+macro_rules! match_ty {
+    ($from:ty, {
+        $to:ty $(| $to_tail:ty)* => $branch:expr,
+        $($tail:tt)*
+    }) => {
+        $crate::match_ty!($from, {
+            | $to => $branch,
+            $(| $to_tail:ty => $branch,)*
+            $($tail)*
+        });
+    };
+
+    ($from:ty, {
+        | $to:ty $(| $to_tail:ty)* => $branch:expr,
+        $($tail:tt)*
+    }) => {{
+        if let Some((from, to)) = get_cast_fns!($from, $to) {
+            $branch
+        } else {
+            $crate::match_ty!($from, {
+                $(| $to_tail:ty => $branch,)*
+                $($tail)*
+            });
+        }
+    }};
+
+    ($from:ty, {
+        $pat:pat => $branch:expr $(,)?
+    }) => {
+        $branch
+    };
+
+    ($from:ty, {}) => {};
 }
 
 #[cfg(test)]
