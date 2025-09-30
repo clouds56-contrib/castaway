@@ -446,39 +446,155 @@ macro_rules! match_type {
 }
 
 #[macro_export]
+/// Perform a compile-time style match over a single source type against one or
+/// more candidate destination types, executing the first matching branch.
+///
+/// This macro is the type-level analogue to [`match_type!`], but instead of
+/// matching on the runtime value of an expression it matches only on the
+/// *static type* `From` that you provide as the first argument. Each arm lists
+/// one or more concrete destination types separated by `|`. If any of those
+/// types can be (symmetrically) cast to/from `From` (i.e. they are considered
+/// identical under the rules of this crate), the associated branch expression
+/// is evaluated and returned as the overall result of the macro invocation.
+///
+/// Internally this uses [`get_cast_fns!`] to test feasibility. Branches that
+/// are not taken compile away entirely; there is no runtime branching once
+/// monomorphized. Like the other casting macros, no data conversion is
+/// performed—only identity casts for concretely equal types (respecting
+/// lifetime / lifetime‑free rules) are considered matches.
+///
+/// A final default arm is required (unless you intentionally invoke with an
+/// empty set, which expands to `()`), because you cannot exhaustively list all
+/// possible types. The default arm does not have to be `_`; any irrefutable
+/// pattern is accepted. Since no value is supplied, that pattern is typically
+/// just `_`.
+///
+/// Differences from [`match_type!`]:
+/// - `match_ty!` operates purely on types; it never evaluates or binds a
+///   value.
+/// - Branch arms cannot directly bind a value of the matched type (there is
+///   none); they just produce an expression result.
+/// - It returns the branch expression directly; there is no intermediate cast
+///   `Result`.
+///
+/// If you need the actual *cast functions* inside the matched branch, simply
+/// call `get_cast_fns!(From, ThatType).unwrap()` again inside that branch; the
+/// compiler will constant-propagate the unwrap because the macro already
+/// proved the types match.
+///
+/// # Examples
+///
+/// Basic categorization:
+/// ```
+/// use castaway::match_ty;
+/// fn classify<T: 'static>() -> &'static str {
+///     match_ty!(T, {
+///         u8 | i8 => "byte",
+///         u16 => "short",
+///         _ => "other",
+///     })
+/// }
+/// assert_eq!(classify::<u8>(), "byte");
+/// assert_eq!(classify::<i8>(), "byte");
+/// assert_eq!(classify::<u16>(), "short");
+/// assert_eq!(classify::<u32>(), "other");
+/// ```
+///
+/// Using it to specialize a generic implementation:
+/// ```
+/// use castaway::match_ty;
+/// fn zero_value<T: 'static>() -> T where T: Default {
+///     match_ty!(T, (from, _), {
+///         u8 => from(0u8),
+///         i32 => from(0i32),
+///         // Fall back to `Default` for any other type.
+///         _ => T::default(),
+///     })
+/// }
+/// assert_eq!(zero_value::<u8>(), 0);
+/// assert_eq!(zero_value::<i32>(), 0);
+/// assert_eq!(zero_value::<u16>(), 0); // from Default
+/// ```
+///
+/// Accessing cast function pointers inside a matched branch:
+/// ```
+/// use castaway::match_ty;
+/// fn maybe_round_trip<T: 'static + Copy>() -> Option<(fn(u32)->T, fn(T)->u32)> {
+///     match_ty!(T, (from, to), {
+///         u32 => {
+///             Some((from, to))
+///         },
+///         _ => None,
+///     })
+/// }
+/// assert!(maybe_round_trip::<u32>().is_some());
+/// assert!(maybe_round_trip::<u16>().is_none());
+/// ```
+///
+/// Empty usage (rare):
+/// ```
+/// use castaway::match_ty;
+/// const _: () = match_ty!(u8, {}); // Expands to ()
+/// ```
+///
+/// # Pitfalls
+/// - Remember to include a default arm, otherwise you may accidentally rely
+///   on the empty-form which just returns `()`.
+/// - Grouping with `|` shares a single branch expression for all types in the
+///   group; if you need different logic per type, use separate arms.
+/// - Lifetimes and lifetime‑free rules apply just as with [`cast!`]; if a cast
+///   would be rejected there, the arm will not match here.
+///
+/// # When to use
+/// - You need a concise, readable way to pick between a small set of known
+///   concrete types in a generic context.
+/// - You want zero‑cost pseudo‑specialization without nightly features.
 macro_rules! match_ty {
+    ($from:ty, $(($from_fn:pat, $to_fn:pat),)? {
+        _ => $branch:expr $(,)?
+    }) => {
+        ($branch)
+    };
+
+    ($from:ty, ($from_fn:pat, $to_fn:pat), {
+        $to:ty $(| $to_tail:ty)* => $branch:expr,
+        $($tail:tt)*
+    }) => {
+        if let Some(($from_fn, $to_fn)) = $crate::get_cast_fns!($from, $to) {
+            $branch
+        } else {
+            $crate::match_ty!($from, ($from_fn, $to_fn), {
+                $($to_tail => $branch,)*
+                $($tail)*
+            })
+        }
+    };
+
     ($from:ty, {
         $to:ty $(| $to_tail:ty)* => $branch:expr,
         $($tail:tt)*
     }) => {
-        $crate::match_ty!($from, {
-            | $to => $branch,
-            $(| $to_tail:ty => $branch,)*
+        if $crate::can_cast!($from, $to) {
+            $branch
+        } else {
+            $crate::match_ty!($from, {
+                $($to_tail => $branch,)*
+                $($tail)*
+            })
+        }
+    };
+
+    ($from:ty, $(($from_fn:pat, $to_fn:pat),)? {
+        $(| $to:ty)+ => $branch:expr,
+        $($tail:tt)*
+    }) => {
+        $crate::match_ty!($from, $(($from_fn, $to_fn),)? {
+            $($to => $branch,)+
             $($tail)*
         });
     };
 
-    ($from:ty, {
-        | $to:ty $(| $to_tail:ty)* => $branch:expr,
-        $($tail:tt)*
-    }) => {{
-        if let Some((from, to)) = get_cast_fns!($from, $to) {
-            $branch
-        } else {
-            $crate::match_ty!($from, {
-                $(| $to_tail:ty => $branch,)*
-                $($tail)*
-            });
-        }
-    }};
-
-    ($from:ty, {
-        $pat:pat => $branch:expr $(,)?
-    }) => {
-        $branch
-    };
-
-    ($from:ty, {}) => {};
+    ($from:ty, $(($from_fn:pat, $to_fn:pat),)? {}) => {()};
 }
 
 #[cfg(test)]
@@ -778,5 +894,14 @@ mod tests {
             (false, 2u16) => Ok((false, 2u16)),
             true => Err(true),
         }
+    }
+
+    #[test]
+    fn test_match_ty() {
+        let a = match_ty!(u8, {
+            u8 => 1,
+            _ => 2,
+        });
+        assert_eq!(a, 1);
     }
 }
